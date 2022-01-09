@@ -4,50 +4,99 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Base64.sol";
+import "./DNA.sol";
 
-contract NFTs is ERC721, ERC721Enumerable {
+contract NFTs is ERC721, ERC721Enumerable, DNA {
     using Counters for Counters.Counter;
+    using Strings for uint256;
 
-    Counters.Counter private NFTId;
+    Counters.Counter private _idCounter;
     uint256 public maxSupply;
+    mapping(uint256 => uint256) public tokenDNA;
 
-    constructor(uint256 _maxSupply) ERC721("ZhongGeoZ", "ZNG") {
+    constructor(uint256 _maxSupply) ERC721("PlatziPunks", "PLPKS") {
         maxSupply = _maxSupply;
     }
 
-    // Allows an user to mint a NFT
     function mint() public {
-        uint256 current = NFTId.current();
+        uint256 current = _idCounter.current();
+        require(current < maxSupply, "No PlatziPunks left :(");
 
-        require(
-            current < maxSupply,
-            "There is not more ZhongGeoZ available... :("
-        );
-
+        tokenDNA[current] = deterministicPseudoRandomDNA(current, msg.sender);
         _safeMint(msg.sender, current);
-
-        NFTId.increment();
+        _idCounter.increment();
     }
 
-    // Returns the metadata of the NFT
-    function tokenURI(uint256 _NFTId)
+    function _baseURI() internal pure override returns (string memory) {
+        return "https://avataaars.io/";
+    }
+
+    function _paramsURI(uint256 _dna) internal view returns (string memory) {
+        string memory params;
+
+        {
+            params = string(
+                abi.encodePacked(
+                    "accessoriesType=",
+                    getAccessoriesType(_dna),
+                    "&clotheColor=",
+                    getClotheColor(_dna),
+                    "&clotheType=",
+                    getClotheType(_dna),
+                    "&eyeType=",
+                    getEyeType(_dna),
+                    "&eyebrowType=",
+                    getEyeBrowType(_dna),
+                    "&facialHairColor=",
+                    getFacialHairColor(_dna),
+                    "&facialHairType=",
+                    getFacialHairType(_dna),
+                    "&hairColor=",
+                    getHairColor(_dna),
+                    "&hatColor=",
+                    getHatColor(_dna),
+                    "&graphicType=",
+                    getGraphicType(_dna),
+                    "&mouthType=",
+                    getMouthType(_dna),
+                    "&skinColor=",
+                    getSkinColor(_dna)
+                )
+            );
+        }
+
+        return string(abi.encodePacked(params, "&topType=", getTopType(_dna)));
+    }
+
+    function imageByDNA(uint256 _dna) public view returns (string memory) {
+        string memory baseURI = _baseURI();
+        string memory paramsURI = _paramsURI(_dna);
+
+        return string(abi.encodePacked(baseURI, "?", paramsURI));
+    }
+
+    function tokenURI(uint256 tokenId)
         public
         view
         override
         returns (string memory)
     {
         require(
-            _exists(_NFTId),
+            _exists(tokenId),
             "ERC721 Metadata: URI query for nonexistent token"
         );
+
+        uint256 dna = tokenDNA[tokenId];
+        string memory image = imageByDNA(dna);
 
         string memory jsonURI = Base64.encode(
             abi.encodePacked(
                 '{ "name": "PlatziPunks #',
-                _NFTId,
+                tokenId.toString(),
                 '", "description": "Platzi Punks are randomized Avataaars stored on chain to teach DApp development on Platzi", "image": "',
-                "// TODO: Calculate image URL",
+                image,
                 '"}'
             )
         );
@@ -56,7 +105,7 @@ contract NFTs is ERC721, ERC721Enumerable {
             string(abi.encodePacked("data:application/json;base64,", jsonURI));
     }
 
-    // Override
+    // Override required
     function _beforeTokenTransfer(
         address from,
         address to,
@@ -65,7 +114,6 @@ contract NFTs is ERC721, ERC721Enumerable {
         super._beforeTokenTransfer(from, to, tokenId);
     }
 
-    // Override
     function supportsInterface(bytes4 interfaceId)
         public
         view
